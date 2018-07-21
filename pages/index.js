@@ -1,6 +1,7 @@
 /* eslint-disable react/sort-comp */
 
 import React, { Component, Fragment } from 'react';
+import Router from 'next/router';
 import Comments from '../components/Comments';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
@@ -39,6 +40,12 @@ const sidebarCommentsStyle = {
   height: '100%'
 };
 
+const urn = path => {
+  return process.env.NODE_ENV === 'production'
+    ? `/latest${path}` // AWS Lambda
+    : path;
+};
+
 class App extends Component {
   state = {
     trends: {},
@@ -50,44 +57,45 @@ class App extends Component {
   };
 
   collector = async () => {
-    const url =
-      process.env.NODE_ENV === 'production'
-        ? '/latest/collector' // aws lambda path
-        : '/collector';
-
+    const url = urn('/collector');
     const response = await fetch(url);
     const { comments, trends, date } = await response.json();
     return { comments, trends, date };
   };
 
   searchComments = searchTokens => {
+    const pathname = urn('/');
     const { comments } = this.state;
+    const queryTokens = searchTokens.join(' ');
     const searchedComments =
-      searchTokens.length !== 0
-        ? this.fuse.search(searchTokens.join(' '))
-        : comments;
+      searchTokens.length !== 0 ? this.fuse.search(queryTokens) : comments;
 
-    this.setState({ searchedComments, searchTokens });
+    this.setState({ searchedComments, searchTokens }, () => {
+      Router.push(Router.asPath, `${pathname}?search=${queryTokens}`, {
+        shallow: true
+      });
+    });
   };
 
   async componentDidMount() {
     /*
-        Fetch hn hiring results from aws lambda, setState, and init Fuse.js
+        Fetch hn hiring results from lambda, setState, and init Fuse.js
     */
-    this.collector().then(({ comments, trends, date }) =>
+    this.collector().then(({ comments, trends, date }) => {
+      const searchTokens = Object.values(Router.query);
       this.setState(
         {
           loading: false,
-          searchedComments: comments,
           date,
           comments,
           trends
         },
         () => {
           this.fuse = new Fuse(comments, fuseOptions);
+          this.searchComments(searchTokens);
         }
-      )
-    );
+      );
+    });
   }
 
   render() {
